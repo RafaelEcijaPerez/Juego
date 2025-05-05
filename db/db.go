@@ -1,21 +1,32 @@
 package db
 
 import (
-	"fmt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"log"
 )
 
-// db será el objeto de conexión a la base de datos
-var DB *gorm.DB
+type Jugador struct {
+	ID   string `json:"id" bson:"id"`   // ID único del jugador
+	Nombre string `json:"nombre" bson:"nombre"` // Nombre del jugador
+	Email    string `json:"email"`
+	Contrasena string `json:"contrasena" bson:"contrasena"` // Contraseña del jugador
+}
 
-// InitDB inicializa la conexión a MySQL
-func InitDB() {
-	var err error
-	dsn := "root:@tcp(127.0.0.1:3306)/nombre_basededatos?charset=utf8mb4&parseTime=True&loc=Local"
-	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+var DB *gorm.DB
+var err error
+
+func Connect() {
+	// Establecer la conexión con la base de datos SQLite
+	DB, err = gorm.Open("sqlite3", "./gorm.db")
 	if err != nil {
-		panic("No se pudo conectar a la base de datos")
+		log.Fatal("Error al conectar con la base de datos: ", err)
 	}
-	fmt.Println("Conexión a MySQL exitosa")
+
+	// Migrar los modelos
+	DB.AutoMigrate(&Jugador{})
+}
+
+func Close() {
+	DB.Close()
 }

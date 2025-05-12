@@ -1,0 +1,38 @@
+{
+  "message": "El juego ha terminado. ¡Jugador 1 ha ganado!",
+  "juego": {
+    "id": "1709419200123",
+    "tipo_juego": "conecta_cuatro",
+    "jugadores": [
+      {
+        "id": 1,
+        "nombre": "Jugador 1",
+        "email": "jugador1@example.com",
+        "contrasena": "1234"
+      },
+      {
+        "id": 2,
+        "nombre": "Jugador 2",
+        "email": "jugador2@example.com",
+        "contrasena": "1234"
+      }
+    ],
+    "tablero": [
+      ["", "", "", "X", "", "", ""],
+      ["", "", "", "X", "", "", ""],
+      ["", "", "", "X", "", "", ""],
+      ["", "", "", "X", "", "", ""],
+      ["", "", "", "", "", "", ""],
+      ["", "", "", "", "", "", ""]
+    ],
+    "estado": "Terminado",
+    "creado_en": "2023-10-01T12:00:00Z",
+    "actualizado_en": "2023-10-01T12:20:00Z",
+    "winner": {
+      "id": 1,
+      "nombre": "Jugador 1",
+      "email": "jugador1@example.com",
+      "contrasena": "1234"
+    }
+  }
+}

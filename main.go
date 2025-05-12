@@ -2,11 +2,17 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"juego/db"
 	"juego/routes"
+	"log"
 )
 
 func main() {
+	// Conexión a la base de datos
+	db.Connect()
+	// cierra la conexión
+	defer db.Close()
+
 	// Usar el enrutador de Gin
 	r := routes.SetupRouter()
 
@@ -16,4 +22,3 @@ func main() {
 		log.Fatal(err)
 	}
 }
-

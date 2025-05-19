@@ -5,12 +5,11 @@ import (
 	"juego/models"
 	"math/rand"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
-
-import "sync"
 
 var juegosActivosPasaBolas = make(map[string]models.PasaBolas) // Juegos activos
 var juegosMutexPasaBolas sync.Mutex
@@ -60,7 +59,7 @@ func CrearJuegoPasaBolas(c *gin.Context) {
 		})
 	}
 
-	// Crear el juego
+	// Crear un nuevo juego
 	juego := models.PasaBolas{
 		ID:           fmt.Sprintf("%d", time.Now().UnixNano()),
 		TipoJuego:    "pasa_bolas",
@@ -72,6 +71,7 @@ func CrearJuegoPasaBolas(c *gin.Context) {
 
 	// Guardar el juego en memoria
 	juegosActivosPasaBolas[juego.ID] = juego
+	juegosMutexPasaBolas.Unlock()
 
 	// Responder con el juego creado
 	c.JSON(http.StatusCreated, gin.H{
@@ -109,6 +109,7 @@ func LanzarBola(c *gin.Context) {
 	// Acceder al juego para modificarlo
 	juego, existe := juegosActivosPasaBolas[id]
 	if !existe {
+		juegosMutexPasaBolas.Unlock()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Juego no encontrado"})
 		return
 	}
@@ -152,16 +153,19 @@ func LanzarBola(c *gin.Context) {
 func TerminarJuegoPasaBolas(c *gin.Context) {
 	id := c.Param("id")
 
+	juegosMutexPasaBolas.Lock()
 	_, existe := juegosActivosPasaBolas[id]
 	if !existe {
+		juegosMutexPasaBolas.Unlock()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Juego no encontrado"})
 		return
 	}
-
 	delete(juegosActivosPasaBolas, id)
+	juegosMutexPasaBolas.Unlock()
 
 	c.JSON(http.StatusOK, gin.H{"message": "Juego terminado y eliminado"})
 }
+
 
 
 // ReiniciarBolasPasaBolas — Reinicia las bolas para todos los jugadores

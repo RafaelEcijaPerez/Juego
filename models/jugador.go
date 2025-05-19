@@ -1,8 +1,8 @@
 package models
-import ()
 
 type Jugador struct {
-	ID   string `json:"id" bson:"id"`   // ID único del jugador
-	Nombre string `json:"nombre" bson:"nombre"` // Nombre del jugador
-	Contrasena string `json:"contrasena" bson:"contrasena"` // Contraseña del jugador
+	ID       uint   `json:"id" gorm:"primary_key"`
+	Name     string `json:"name"`
+	Email    string `json:"email" gorm:"unique"`
+	Password string `json:"password"`
 }

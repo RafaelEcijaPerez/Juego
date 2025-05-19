@@ -1,0 +1,36 @@
+{
+  "message": "Bola lanzada",
+  "juego": {
+    "id": "1698419200123",
+    "tipo_juego": "pasa_bolas",
+    "jugadores": [
+      {
+        "id": 1,
+        "nombre": "Jugador 1",
+        "bolas": 9,
+        "eliminado": false
+      },
+      {
+        "id": 2,
+        "nombre": "Jugador 2",
+        "bolas": 11,
+        "eliminado": false
+      },
+      {
+        "id": 3,
+        "nombre": "Jugador 3",
+        "bolas": 10,
+        "eliminado": false
+      },
+      {
+        "id": 4,
+        "nombre": "Jugador 4",
+        "bolas": 10,
+        "eliminado": false
+      }
+    ],
+    "estado": "En Progreso",
+    "ciclos": 1,
+    "temporizador": 58
+  }
+}

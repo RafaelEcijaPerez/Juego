@@ -1,0 +1,7 @@
+{
+  "jugador": {
+    "id": 1,
+    "nombre": "Juan",
+    "email": "juan@example.com"
+  }
+}

@@ -3,59 +3,74 @@ package handlers
 import (
 	"fmt"
 	"juego/models"
+	"math/rand"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-var juegosActivosPasaBolas = make(map[string]models.PasaBolas)
+import "sync"
 
-// CrearJuegoPasaBolas crea un nuevo juego de Pasa Bolas
+var juegosActivosPasaBolas = make(map[string]models.PasaBolas) // Juegos activos
+var juegosMutexPasaBolas sync.Mutex
+
+// CrearJuegoPasaBolas — Crea un nuevo juego de Pasa Bolas
 func CrearJuegoPasaBolas(c *gin.Context) {
-	// Validar que el cuerpo de la solicitud no esté vacío
 	if c.Request.Body == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Cuerpo de la solicitud vacío"})
 		return
 	}
-	// Crear una estructura para almacenar los jugadores y el temporizador
-	var req struct {
-		Jugadores    []models.JugadorPasaBolas `json:"jugadores"`
-		Temporizador int                       `json:"temporizador"` // Permitir que se pase el tiempo de ciclo
-	}
 
-	// Obtener los jugadores y el temporizador del cuerpo de la solicitud
-	if err := c.BindJSON(&req); err != nil {
+	// Obtener los jugadores del cuerpo de la solicitud
+	var jugadores []models.Jugador
+	if err := c.BindJSON(&jugadores); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
 		return
 	}
 
-	// Validación de número de jugadores
-	if len(req.Jugadores) < 2 || len(req.Jugadores) > 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Debe haber al menos 2 jugadores y un máximo de 6 jugadores"})
+	// Asegurarse de que haya exactamente 4 jugadores
+	if len(jugadores) != 4 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Debe haber exactamente 4 jugadores"})
 		return
 	}
 
-	// Asignar bolas a cada jugador
-	for i := range req.Jugadores {
-		req.Jugadores[i].Bolas = 10  // Inicializar el número de bolas a 10
-		req.Jugadores[i].Eliminado = false // Inicializar el estado de eliminación a falso
+	// Inicializar las bolas para cada jugador
+	var jugadoresPasaBolas []models.JugadorPasaBolas
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	for i, jugador := range jugadores {
+		var bolas []models.Bola
+		for j := 0; j < 10; j++ {
+			bolas = append(bolas, models.Bola{
+				X:        150 + random.Float64()*100,
+				Y:        150 + random.Float64()*100,
+				VX:       0,
+				VY:       0,
+				Color:    fmt.Sprintf("#%06X", random.Intn(0xFFFFFF)),
+				PlayerID: jugador.ID,
+			})
+		}
+
+		jugadoresPasaBolas = append(jugadoresPasaBolas, models.JugadorPasaBolas{
+			Jugador:   jugador,
+			Bolas:     bolas,
+			Eliminado: false,
+			Posicion:  []string{"arriba", "derecha", "abajo", "izquierda"}[i], // Asignamos posición
+		})
 	}
 
 	// Crear el juego
 	juego := models.PasaBolas{
-		ID:           fmt.Sprintf("%d", time.Now().Unix()),
+		ID:           fmt.Sprintf("%d", time.Now().UnixNano()),
 		TipoJuego:    "pasa_bolas",
-		Jugadores:    req.Jugadores, // Los jugadores asignados desde la solicitud
+		Jugadores:    jugadoresPasaBolas,
 		Estado:       "En Progreso",
-		Ciclos:       0,              // Número de ciclos de eliminación
-		Temporizador: req.Temporizador, // El tiempo que se pasa en la solicitud
+		Ciclos:       0,
+		Temporizador: 60, // Ciclo de 60 segundos (predeterminado)
 	}
 
-	// Calcular el número de ciclos basados en la cantidad de jugadores
-	juego.Ciclos = len(req.Jugadores) - 1
-
-	// Guardar el juego en memoria (mapa de juegos activos)
+	// Guardar el juego en memoria
 	juegosActivosPasaBolas[juego.ID] = juego
 
 	// Responder con el juego creado
@@ -65,79 +80,75 @@ func CrearJuegoPasaBolas(c *gin.Context) {
 	})
 }
 
-
-// ObtenerJuegoPasaBolas obtiene el estado de un juego de pasa bolas por su ID
+// ObtenerJuegoPasaBolas — Devuelve el estado del juego actual
 func ObtenerJuegoPasaBolas(c *gin.Context) {
-	// Validar que el ID del juego no esté vacío
-	if c.Param("id") == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID del juego vacío"})
-		return
-	}
-	
 	id := c.Param("id")
-
-	// Acceder al juego con mutex de lectura
 	juego, existe := juegosActivosPasaBolas[id]
+
 	if !existe {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Juego no encontrado"})
 		return
 	}
 
-	// Responder con el estado del juego
-	c.JSON(http.StatusOK, gin.H{
-		"juego": juego,
-	})
+	c.JSON(http.StatusOK, gin.H{"juego": juego})
 }
 
-// EliminarJugadorPasaBolas elimina un jugador de un juego de pasa bolas
-func EliminarJugadorPasaBolas(c *gin.Context) {
-	// Validar que el ID del juego no esté vacío
-	if c.Param("id") == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID del juego vacío"})
-		return
-	}
+// LanzarBola — Lanza una bola de un jugador a otro
+func LanzarBola(c *gin.Context) {
 	id := c.Param("id")
+	var movimiento struct {
+		DesdeID uint `json:"desde_id"` // ID del jugador que lanza la bola
+		HaciaID uint `json:"hacia_id"` // ID del jugador que recibe la bola
+	}
 
-	// Validar que el cuerpo de la solicitud no esté vacío
-	if c.Request.Body == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cuerpo de la solicitud vacío"})
+	if err := c.BindJSON(&movimiento); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
 		return
 	}
+
+	// Acceder al juego para modificarlo
 	juego, existe := juegosActivosPasaBolas[id]
 	if !existe {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Juego no encontrado"})
 		return
 	}
 
-	// Eliminar al jugador con más bolas
-	maxBolas := -1
-	// Buscar al jugador con más bolas que no esté eliminado
-	// y que no sea el último jugador restante
-	var jugadorAEliminar models.JugadorPasaBolas
-	for _, jugador := range juego.Jugadores {
-		if jugador.Bolas > maxBolas && !jugador.Eliminado {
-			maxBolas = jugador.Bolas
-			jugadorAEliminar = jugador
-		}
-	}
-
-	// Marcar como eliminado
+	var desdeJugador, haciaJugador *models.JugadorPasaBolas
 	for i := range juego.Jugadores {
-		if juego.Jugadores[i].ID == jugadorAEliminar.ID {
-			juego.Jugadores[i].Eliminado = true
-			break
+		if juego.Jugadores[i].Jugador.ID == movimiento.DesdeID && !juego.Jugadores[i].Eliminado {
+			desdeJugador = &juego.Jugadores[i]
+		}
+		if juego.Jugadores[i].Jugador.ID == movimiento.HaciaID && !juego.Jugadores[i].Eliminado {
+			haciaJugador = &juego.Jugadores[i]
 		}
 	}
 
-	// Actualizar el estado del juego
+	if desdeJugador == nil || haciaJugador == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Jugadores no válidos o eliminados"})
+		return
+	}
+
+	// Lógica para lanzar la bola
+	if len(desdeJugador.Bolas) > 0 {
+		// Asumimos que lanzamos la primera bola (puedes modificar esto)
+		bola := &desdeJugador.Bolas[0]
+		// Mover bola del jugador que lanza al que recibe
+		haciaJugador.Bolas = append(haciaJugador.Bolas, *bola)
+		// Eliminar la bola del jugador que lanza
+		desdeJugador.Bolas = desdeJugador.Bolas[1:]
+	}
+
+	// Actualizar estado del juego
+	juegosActivosPasaBolas[id] = juego
+
+	// Responder con el estado actualizado
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "Jugador eliminado",
-		"jugador_eliminado": jugadorAEliminar,
-		"juego":         juego,
+		"message": "Bola lanzada",
+		"juego":   juego,
 	})
 }
 
-// TerminarJuegoPasaBolas termina el juego de pasa bolas
+// TerminarJuegoPasaBolas — Termina un juego activo y lo elimina
 func TerminarJuegoPasaBolas(c *gin.Context) {
 	id := c.Param("id")
 
@@ -147,82 +158,45 @@ func TerminarJuegoPasaBolas(c *gin.Context) {
 		return
 	}
 
-	// Eliminar el juego de la memoria
-	// (en este caso, simplemente lo eliminamos del mapa de juegos activos)
 	delete(juegosActivosPasaBolas, id)
 
-	// Responder con el mensaje de juego terminado y eliminado
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Juego terminado y eliminado",
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Juego terminado y eliminado"})
 }
-// PasarBola permite que un jugador pase una bola a cualquier otro jugador
-func PasarBola(c *gin.Context) {
-    idJuego := c.Param("id")
-    var req struct {
-        JugadorEmisor  string `json:"jugador_emisor"`  // ID del jugador que pasa la bola
-        JugadorDestino string `json:"jugador_destino"` // ID del jugador que recibe la bola
-    }
-    if err := c.BindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
-        return
-    }
 
-    juego, existe := juegosActivosPasaBolas[idJuego]
-    if !existe {
-        c.JSON(http.StatusNotFound, gin.H{"error": "Juego no encontrado"})
-        return
-    }
 
-    // Buscar al jugador emisor
-    var emisor *models.JugadorPasaBolas
-    for i := range juego.Jugadores {
-        if juego.Jugadores[i].ID == req.JugadorEmisor && !juego.Jugadores[i].Eliminado {
-            emisor = &juego.Jugadores[i]
-            break
-        }
-    }
-    if emisor == nil {
-        c.JSON(http.StatusNotFound, gin.H{"error": "Jugador emisor no encontrado o eliminado"})
-        return
-    }
+// ReiniciarBolasPasaBolas — Reinicia las bolas para todos los jugadores
+func ReiniciarBolasPasaBolas(c *gin.Context) {
+	id := c.Param("id")
 
-    // Buscar al jugador destino
-    var destino *models.JugadorPasaBolas
-    for i := range juego.Jugadores {
-        if juego.Jugadores[i].ID == req.JugadorDestino && !juego.Jugadores[i].Eliminado {
-            destino = &juego.Jugadores[i]
-            break
-        }
-    }
-	// Verificar si el jugador destino existe y no está eliminado
-    if destino == nil {
-        c.JSON(http.StatusNotFound, gin.H{"error": "Jugador destino no encontrado o eliminado"})
-        return
-    }
+	juegosMutexPasaBolas.Lock()
+	juego, existe := juegosActivosPasaBolas[id]
+	if !existe {
+		juegosMutexPasaBolas.Unlock()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Juego no encontrado"})
+		return
+	}
 
-    // Evitar que el jugador se pase la bola a sí mismo
-    if req.JugadorEmisor == req.JugadorDestino {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes pasarte la bola a ti mismo"})
-        return
-    }
+	// Reiniciar bolas y eliminar a todos los jugadores
+	for i := range juego.Jugadores {
+		var bolas []models.Bola
+		random := rand.New(rand.NewSource(time.Now().UnixNano()))
+		for j := 0; j < 10; j++ {
+			bolas = append(bolas, models.Bola{
+				X:        150 + random.Float64()*100,
+				Y:        150 + random.Float64()*100,
+				VX:       0,
+				VY:       0,
+				Color:    fmt.Sprintf("#%06X", random.Intn(0xFFFFFF)),
+				PlayerID: juego.Jugadores[i].Jugador.ID,
+			})
+		}
+		juego.Jugadores[i].Bolas = bolas
+		juego.Jugadores[i].Eliminado = false
+	}
 
-    // Verificar que el emisor tenga bolas para pasar
-    if emisor.Bolas <= 0 {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "El jugador emisor no tiene bolas para pasar"})
-        return
-    }
+	juego.Estado = "En Progreso"
+	juegosActivosPasaBolas[id] = juego
+	juegosMutexPasaBolas.Unlock()
 
-    // Actualizar las bolas: el emisor pierde una y el destino gana una
-    emisor.Bolas -= 1
-    destino.Bolas += 1
-
-    juegosActivosPasaBolas[idJuego] = juego
-
-    c.JSON(http.StatusOK, gin.H{
-        "message":         "Bola pasada exitosamente",
-        "jugador_emisor":  emisor,
-        "jugador_destino": destino,
-        "juego":           juego,
-    })
+	c.JSON(http.StatusOK, gin.H{"message": "Bolas reiniciadas", "juego": juego})
 }

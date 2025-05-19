@@ -16,7 +16,7 @@ var (
 	juegosMutex   sync.RWMutex
 )
 
-// CrearJuego crea un nuevo juego de Cuatro en Raya
+// CrearJuego — Crea un nuevo juego de Cuatro en Raya
 func CrearJuego(c *gin.Context) {
 	// Validar que el cuerpo de la solicitud no esté vacío
 	if c.Request.Body == nil {
@@ -63,7 +63,7 @@ func CrearJuego(c *gin.Context) {
 	})
 }
 
-// ObtenerJuego obtiene el estado de un juego por su ID
+// ObtenerJuego — Obtiene el estado de un juego por su ID
 func ObtenerJuego(c *gin.Context) {
 	id := c.Param("id")
 
@@ -80,7 +80,7 @@ func ObtenerJuego(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"juego": juego})
 }
 
-// TerminarJuego termina un juego y lo elimina de la memoria
+// TerminarJuego — Termina un juego y lo elimina de la memoria
 func TerminarJuego(c *gin.Context) {
 	id := c.Param("id")
 
@@ -97,25 +97,29 @@ func TerminarJuego(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Juego terminado y eliminado"})
 }
 
-// HacerMovimiento maneja el movimiento de un jugador en el juego
+// HacerMovimiento — Maneja el movimiento de un jugador en el juego (colocar o mover ficha)
 func HacerMovimiento(c *gin.Context) {
 	id := c.Param("id")
 	var movimiento struct {
-		Columna int `json:"columna"` // Columna en la que se desea colocar la ficha
+		OrigenX  int `json:"origen_x,omitempty"` // Posición X de la ficha que quiere mover (opcional)
+		OrigenY  int `json:"origen_y,omitempty"` // Posición Y de la ficha que quiere mover (opcional)
+		DestinoX int `json:"destino_x"`          // Posición X del destino
+		DestinoY int `json:"destino_y"`          // Posición Y del destino
 	}
 
+	// Validar entrada del movimiento
 	if err := c.BindJSON(&movimiento); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Movimiento inválido"})
 		return
 	}
 
-	// Verificar que la columna sea válida (0 a 3)
-	if movimiento.Columna < 0 || movimiento.Columna >= 4 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Columna inválida"})
+	// Verificar que el destino esté dentro del rango válido del tablero
+	if movimiento.DestinoX < 0 || movimiento.DestinoX >= 4 || movimiento.DestinoY < 0 || movimiento.DestinoY >= 4 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Posición de destino fuera del tablero"})
 		return
 	}
 
-	// Acceder al juego con mutex de escritura
+	// Acceder al juego con el mutex de escritura
 	juegosMutex.Lock()
 	juego, existe := juegosActivos[id]
 	if !existe {
@@ -124,105 +128,98 @@ func HacerMovimiento(c *gin.Context) {
 		return
 	}
 
-	// Colocar la ficha en la columna indicada (comenzamos desde la última fila)
-	columnaLlenada := true
-	for fila := 3; fila >= 0; fila-- {
-		if juego.Tablero[fila][movimiento.Columna] == "" {
-			columnaLlenada = false
-			if juego.Turno == 0 {
-				juego.Tablero[fila][movimiento.Columna] = "X"
-			} else {
-				juego.Tablero[fila][movimiento.Columna] = "O"
+	// Identificar ficha del jugador actual
+	ficha := "X"
+	if juego.Turno == 1 {
+		ficha = "O"
+	}
+
+	// Contar cuántas fichas tiene el jugador en el tablero
+	contadorFichas := 0
+	for i := 0; i < 4; i++ {
+		for j := 0; j < 4; j++ {
+			if juego.Tablero[i][j] == ficha {
+				contadorFichas++
 			}
-			break
 		}
 	}
 
-	// Si la columna está llena, no se puede hacer el movimiento
-	// (columnaLlenada se mantiene en true si no se encontró un espacio vacío)
-	if columnaLlenada {
-		juegosMutex.Unlock()
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Columna llena"})
-		return
+	// Si el jugador tiene menos de 4 fichas, está en la fase de colocación
+	if contadorFichas < 4 {
+		// Verificar que el destino esté vacío
+		if juego.Tablero[movimiento.DestinoX][movimiento.DestinoY] != "" {
+			juegosMutex.Unlock()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "La celda de destino ya está ocupada"})
+			return
+		}
+		// Colocar la ficha en la posición de destino
+		juego.Tablero[movimiento.DestinoX][movimiento.DestinoY] = ficha
+	} else {
+		// Si ya tiene 4 fichas, estamos en la fase de movimiento
+		if movimiento.OrigenX < 0 || movimiento.OrigenX >= 4 || movimiento.OrigenY < 0 || movimiento.OrigenY >= 4 {
+			juegosMutex.Unlock()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Posición de origen fuera del tablero"})
+			return
+		}
+		// Verificar que la posición de origen contiene una ficha del jugador
+		if juego.Tablero[movimiento.OrigenX][movimiento.OrigenY] != ficha {
+			juegosMutex.Unlock()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "La celda de origen no contiene tu ficha"})
+			return
+		}
+		// Verificar que el destino esté vacío
+		if juego.Tablero[movimiento.DestinoX][movimiento.DestinoY] != "" {
+			juegosMutex.Unlock()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "La celda de destino ya está ocupada"})
+			return
+		}
+		// Mover la ficha de origen a destino
+		juego.Tablero[movimiento.OrigenX][movimiento.OrigenY] = ""
+		juego.Tablero[movimiento.DestinoX][movimiento.DestinoY] = ficha
 	}
 
-	// Cambiar el turno (alternar entre 0 y 1)
+	// Alternar el turno
 	juego.Turno = 1 - juego.Turno
 
 	// Verificar si hay un ganador
-	if ganador := verificarGanador(juego.Tablero); ganador != "" {
+	if verificarVictoria(juego.Tablero, ficha) {
 		juego.Estado = "Terminado"
-		// Buscar el jugador ganador basado en la ficha ("X" o "O")
-		var ganadorJugador *models.Jugador
-		if ganador == "X" {
-			ganadorJugador = &juego.Jugadores[0]
-		} else {
-			ganadorJugador = &juego.Jugadores[1]
-		}
-		juego.Ganador = ganadorJugador
-
-		// Actualizar el juego en memoria
-		juego.Actualizado = time.Now()
+		juego.Ganador = &juego.Jugadores[juego.Turno]
 		juegosActivos[id] = juego
 		juegosMutex.Unlock()
-
-		// Responder con el estado del juego y el ganador
-		// (eliminamos el juego de la memoria para evitar que se pueda jugar nuevamente)
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Juego terminado",
-			"winner":  ganadorJugador,
-		})
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("¡Jugador %d ha ganado!", juego.Turno+1), "juego": juego})
 		return
 	}
 
-	// Si el juego continúa, actualizar la fecha de última actualización
-	juego.Actualizado = time.Now()
+	// Actualizar el estado del tablero
 	juegosActivos[id] = juego
 	juegosMutex.Unlock()
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Movimiento realizado",
-		"juego":   juego,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Movimiento realizado", "juego": juego})
 }
 
-// verificarGanador revisa filas, columnas y diagonales en el tablero para determinar un ganador
-func verificarGanador(tablero [4][4]string) string {
-	// Revisar filas
-	for fila := 0; fila < 4; fila++ {
-		if tablero[fila][0] != "" &&
-			tablero[fila][0] == tablero[fila][1] &&
-			tablero[fila][0] == tablero[fila][2] &&
-			tablero[fila][0] == tablero[fila][3] {
-			return tablero[fila][0]
+// verificarVictoria — Revisa si un jugador ha ganado
+func verificarVictoria(tablero [4][4]string, ficha string) bool {
+	direcciones := [][]int{{0, 1}, {1, 0}, {1, 1}, {-1, 1}} // Horizontal, vertical, diagonales
+	for i := 0; i < 4; i++ {
+		for j := 0; j < 4; j++ {
+			if tablero[i][j] != ficha {
+				continue
+			}
+			for _, dir := range direcciones {
+				conteo := 1
+				for paso := 1; paso < 4; paso++ {
+					nuevaX := i + paso*dir[0]
+					nuevaY := j + paso*dir[1]
+					if nuevaX < 0 || nuevaX >= 4 || nuevaY < 0 || nuevaY >= 4 || tablero[nuevaX][nuevaY] != ficha {
+						break
+					}
+					conteo++
+				}
+				if conteo >= 4 {
+					return true
+				}
+			}
 		}
 	}
-
-	// Revisar columnas
-	for col := 0; col < 4; col++ {
-		if tablero[0][col] != "" &&
-			tablero[0][col] == tablero[1][col] &&
-			tablero[0][col] == tablero[2][col] &&
-			tablero[0][col] == tablero[3][col] {
-			return tablero[0][col]
-		}
-	}
-
-	// Revisar diagonal principal
-	if tablero[0][0] != "" &&
-		tablero[0][0] == tablero[1][1] &&
-		tablero[0][0] == tablero[2][2] &&
-		tablero[0][0] == tablero[3][3] {
-		return tablero[0][0]
-	}
-
-	// Revisar diagonal secundaria
-	if tablero[0][3] != "" &&
-		tablero[0][3] == tablero[1][2] &&
-		tablero[0][3] == tablero[2][1] &&
-		tablero[0][3] == tablero[3][0] {
-		return tablero[0][3]
-	}
-
-	return ""
+	return false
 }

@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "nombre": "Jugador 1",
+    "email": "jugador1@example.com",
+    "contrasena": "1234"
+  },
+  {
+    "id": 2,
+    "nombre": "Jugador 2",
+    "email": "jugador2@example.com",
+    "contrasena": "1234"
+  },
+  {
+    "id": 3,
+    "nombre": "Jugador 3",
+    "email": "jugador3@example.com",
+    "contrasena": "1234"
+  },
+  {
+    "id": 4,
+    "nombre": "Jugador 4",
+    "email": "jugador4@example.com",
+    "contrasena": "1234"
+  }
+]

@@ -1,68 +1,66 @@
 package services
 
 import (
-	"errors"
-	"github.com/jinzhu/gorm"
-	"golang.org/x/crypto/bcrypt"
-	"juego/models"
+    "errors"
+    "fmt"
+    "juego/models"
+
+    "golang.org/x/crypto/bcrypt"
+    "gorm.io/gorm"
 )
 
 type JugadorService struct {
-	DB *gorm.DB
+    DB *gorm.DB
 }
 
 func NewJugadorService(db *gorm.DB) *JugadorService {
-	return &JugadorService{DB: db}
+    return &JugadorService{DB: db}
 }
 
 func (service *JugadorService) RegisterJugador(jugador *models.Jugador) (*models.Jugador, error) {
-	// Verificar si el email ya existe
-	var existing models.Jugador
-	if err := service.DB.Where("email = ?", jugador.Email).First(&existing).Error; err == nil {
-		return nil, errors.New("el correo ya está registrado")
-	}
+    var existing models.RegisterInput
+    if err := service.DB.Where("Email = ?", jugador.Email).First(&existing).Error; err == nil {
+        return nil, errors.New("el correo ya está registrado")
+    }
 
-	// Generar hash de la contraseña
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(jugador.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, errors.New("no se pudo procesar la contraseña")
-	}
-	jugador.Password = string(hashedPassword)
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(jugador.Password), bcrypt.DefaultCost)
+    if err != nil {
+        return nil, errors.New("no se pudo procesar la contraseña")
+    }
+    jugador.Password = string(hashedPassword)
 
-	// Crear jugador en la base de datos
-	if err := service.DB.Create(jugador).Error; err != nil {
-		return nil, err
-	}
+    if err := service.DB.Create(jugador).Error; err != nil {
+        return nil, err
+    }
 
-	// Retornar solo los datos visibles
-	return &models.Jugador{
-		ID:     jugador.ID,
-		Name:   jugador.Name,
-		Email:  jugador.Email,
-	}, nil
+    return &models.Jugador{
+        ID:    jugador.ID,
+        Name:  jugador.Name,
+        Email: jugador.Email,
+    }, nil
 }
 
 func (service *JugadorService) LoginJugador(email, password string) (*models.Jugador, error) {
-	// Buscar al jugador por correo
-	var Jugador models.Jugador
-	if err := service.DB.Where("email = ?", email).First(&Jugador).Error; err != nil {
-		if gorm.IsRecordNotFoundError(err) {
-			return nil, errors.New("correo o contraseña incorrectos")
-		}
-		return nil, err
-	}
+    var jugador models.Jugador
+    err := service.DB.Where("Email = ?", email).First(&jugador).Error
+    if err != nil {
+        fmt.Printf("DEBUG DB ERROR: %v\n", err)
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return nil, errors.New("correo o contraseña incorrectos")
+        }
+        return nil, err
+    }
 
-	// Verificar que la contraseña sea correcta
-	if err := bcrypt.CompareHashAndPassword([]byte(Jugador.Password), []byte(password)); err != nil {
-		return nil, errors.New("correo o contraseña incorrectos")
-	}
+    fmt.Printf("DEBUG BD hash: %s\n", jugador.Password)
+    fmt.Printf("DEBUG Password recibido: %s\n", password)
 
-	// Retornar solo la información pública del jugador
-	jugador := &models.Jugador{
-		ID:     Jugador.ID,
-		Name: Jugador.Name,
-		Email:  Jugador.Email,
-	}
+    if err := bcrypt.CompareHashAndPassword([]byte(jugador.Password), []byte(password)); err != nil {
+        return nil, errors.New("correo o contraseña incorrectos")
+    }
 
-	return jugador, nil
+    return &models.Jugador{
+        ID:    jugador.ID,
+        Name:  jugador.Name,
+        Email: jugador.Email,
+    }, nil
 }

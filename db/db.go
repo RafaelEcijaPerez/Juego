@@ -1,73 +1,45 @@
 package db
 
 import (
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/mysql"
-	"juego/models"
+	"fmt"
 	"log"
+	"juego/models"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
-var err error
 
 func Connect() {
-	// Primero intenta conectar con la base de datos
 	username := "root"
 	password := ""
 	host := "127.0.0.1"
 	port := "3306"
 	dbname := "juego"
 
-	dsn := username + ":" + password + "@tcp(" + host + ":" + port + ")/" + dbname + "?charset=utf8&parseTime=True&loc=Local"
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		username, password, host, port, dbname)
 
-	// Intentar establecer la conexión
-	DB, err = gorm.Open("mysql", dsn)
+	var err error
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("Error al conectar con la base de datos: ", err)
+		log.Fatal("❌ Error al conectar con la base de datos:", err)
 	}
 
-	// Verificar que la conexión es válida
-	if DB == nil {
-		log.Fatal("La conexión a la base de datos no se ha inicializado correctamente.")
-	}
-
-	// Desactiva la pluralización de las tablas de GORM
-	DB.SingularTable(true)
-
-	// Migrar los modelos
-	DB.AutoMigrate(&models.Jugador{})
-}
-
-func Close() {
-	if err := DB.Close(); err != nil {
-		log.Fatal("Error al cerrar la base de datos: ", err)
-	}
-}
-
-
-type Jugador struct {
-	ID   string `json:"id" bson:"id"`   // ID único del jugador
-	Nombre string `json:"nombre" bson:"nombre"` // Nombre del jugador
-	Email    string `json:"email"`
-	Contrasena string `json:"contrasena" bson:"contrasena"` // Contraseña del jugador
-}
-
-/*
-var DB *gorm.DB
-var err error
-
-func Connect() {
-	// Establecer la conexión con la base de datos SQLite
-	DB, err = gorm.Open("sqlite3", "./gorm.db")
+	err = DB.AutoMigrate(&models.Jugador{})
 	if err != nil {
-		log.Fatal("Error al conectar con la base de datos: ", err)
+		log.Fatal("❌ Error al migrar modelos:", err)
 	}
 
-	// Migrar los modelos
-	DB.AutoMigrate(&Jugador{})
+	log.Println("✅ Conexión exitosa a la base de datos.")
 }
-*/
-
-// func Close() {
-// 	DB.Close()
-// }
+func Close() error {
+	if DB != nil {
+		sqlDB, err := DB.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.Close()
+	}
+	return nil
+}

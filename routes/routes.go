@@ -12,8 +12,16 @@ func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
 	// Crear una instancia del JugadorService
+	// Asegúrate de que db.DB sea del tipo *gorm.io/gorm.DB
 	jugadorService := services.NewJugadorService(db.DB)
 
+	// Nuevo controlador QR
+	qrController := controllers.NewQRController()
+
+	// Rutas QR
+	r.POST("/generate-qr", qrController.GenerateQR)
+	r.POST("/check-qr-status", qrController.CheckQRStatus)
+	r.POST("/login/qr", qrController.LoginWithQR)
 	// Crear una instancia del JugadorController
 	jugadorController := controllers.NewJugadorController(jugadorService)
 
